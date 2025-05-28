@@ -7,7 +7,7 @@ st.set_page_config(
 )
 st.title('Stock Trend Predecion')
 st.subheader("***LSTM model***")
-st.sidebar.success("select a page above.")
+# st.sidebar.success("select a page above.")
 
 # Importing nessary libraries 
 import numpy as np
@@ -16,35 +16,36 @@ import matplotlib.pyplot as plt
 import pandas_datareader as data
 import keras.models 
 from tensorflow import keras
-from keras.layers import Dense, Dropout, LSTM
-from keras.models import Sequential
 # import streamlit as st 
 import warnings
 import datetime
+from datetime import date
 import yfinance as yf
 warnings.filterwarnings("ignore", category=DeprecationWarning) 
-from prophet import Prophet
-from prophet.plot import plot_plotly
 from plotly import graph_objs as go
 
 
 st.sidebar.subheader('Parameters')
 start = st.sidebar.date_input("Start date", datetime.date(2010, 1, 1))
-end = st.sidebar.date_input("End date", datetime.date(2020, 1, 1))
+end = st.sidebar.date_input("End date", date.today().strftime("%Y-%m-%d"))
 
 # Loading the stock data form csv file.
 stocks = pd.read_csv("EQUITY_L.csv")
 selected_stock = st.sidebar.selectbox("Select Dataset for Prediction,", stocks)
-tickerData = yf.Ticker(selected_stock) # Get ticker data
+# tickerData = yf.Ticker(selected_stock) # Get ticker data
+tickerData = yf.Ticker('GC=F') # Get ticker data
 
-@st.cache(allow_output_mutation=True)
+@st.cache_data()
 # @st.cache
 def load_data(ticker):
     df = yf.download(ticker, start, end)
+    xau_csv = df.to_csv('XAUUSD.csv')  # Save to CSV file
     df.reset_index(inplace=True)
-    return df
+    
 
-df = load_data(selected_stock)
+# df = load_data(selected_stock)
+load_data('GC=F')
+df = pd.read_csv('XAUUSD.csv')  # Load the saved CSV file
 #---------------------------------------------------------------------------------------------------------"
 #ORIGINAL DATA#
 
@@ -56,8 +57,11 @@ df = load_data(selected_stock)
 
 
 #Describing the data 
-st.subheader('Data from 2010 - 2020')
+st.subheader('Data from 2010 - 2025')
 st.write(df.describe())
+
+st.subheader('Data from 2010 - 2025')
+st.write(df.tail())
 
 #Visualizations
 st.subheader('Closing Price vs Time Chart')
@@ -130,7 +134,7 @@ def plot_raw_data():
     fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name='Stock_close'))
     fig.add_trace(go.Scatter(x=df['Date'], y=df['High'], name='Stock_High'))
     fig.add_trace(go.Scatter(x=df['Date'], y=df['Low'], name='Stock_Low'))
-    fig.add_trace(go.Scatter(x=df['Date'], y=df['Adj Close'], name='Stock_Adj Close'))
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name='Stock_Adj Close'))
     fig.add_trace(go.Scatter(x=df['Date'], y=df['MA10'], name='Moving Avrages - 10'))
     fig.add_trace(go.Scatter(x=df['Date'], y=df['MA20'], name='Moving Avrages - 20'))
     fig.add_trace(go.Scatter(x=df['Date'], y=df['MA100'], name='Moving Avrages - 100'))
@@ -159,12 +163,12 @@ data_training_array = scalar.fit_transform(data_train) #scaler.fit_transform wil
 
 #load my model
 #model=load_models('keras_model.h5')
-model = keras.models.load_model('keras_model.h5')
+model = keras.models.load_model('./lstm_model.keras')
 
 
 #Testing part
 past_100_days = data_train.tail(100)
-final_df = past_100_days.append(data_test, ignore_index=True) #in past_10_days i have append the data testing so now last 100days dt & dt are connected
+final_df = pd.concat([past_100_days, data_test], ignore_index=True) #in past_10_days i have append the data testing so now last 100days dt & dt are connected
 input_data = scalar.fit_transform(final_df)
 
 x_test = []
@@ -244,12 +248,12 @@ data_training_array_Open = scalar_Open.fit_transform(data_train_Open)
 
 #load my model
 #model=load_models('keras_model.h5')
-model_Open = keras.models.load_model('keras_model.h5')
+model_Open = keras.models.load_model('./lstm_model.keras')
 
 
 #Testing part
 past_100_days_Open = data_train_Open.tail(100)
-final_df_Open = past_100_days_Open.append(data_test_Open, ignore_index=True)
+final_df_Open = pd.concat([past_100_days, data_test_Open], ignore_index=True) #in past_10_days i have append the data testing so now last 100days dt & dt are connected
 input_data_Open = scalar_Open.fit_transform(final_df_Open)
  
 #Testing
