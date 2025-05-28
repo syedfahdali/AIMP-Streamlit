@@ -6,29 +6,37 @@ from tensorflow.keras.models import load_model
 from sklearn.preprocessing import StandardScaler, RobustScaler
 import plotly.graph_objects as go
 from datetime import date
+import tensorflow as tf
+
+# Initialize session state for storing results
+if 'prediction_results' not in st.session_state:
+    st.session_state.prediction_results = []
 
 # Streamlit app title
-st.title("AI Powered Market  Predictions: AIMP")
+st.title("AI Powered Markets Prediction: AIMP")
 
 # Sidebar for user inputs
 st.sidebar.header("Prediction Parameters")
+ticker = st.sidebar.selectbox("Select Asset", ["GC=F (Gold)", "BTC-USD (Bitcoin)", "ETH-USD (Etherium)" ,"EURUSD=X (Euro/USD)","AAPL (Apple Inc.)", "GOOGL (Alphabet Inc.)", "MSFT (Microsoft Corp.)"])
 sequence_length = st.sidebar.slider("Sequence Length", min_value=50, max_value=200, value=100, step=10)
 future_steps = st.sidebar.slider("Future Steps to Predict", min_value=10, max_value=60, value=40, step=5)
 model_choice = st.sidebar.selectbox("Select Model", ["LSTM", "GRU", "Ensemble"])
 
-# Function to fetch XAU/USD data
+# Display TensorFlow version for debugging
+st.sidebar.write(f"TensorFlow Version: {tf.__version__}")
+
+# Function to fetch data for selected ticker
 @st.cache_data
-def get_xauusd_data():
+def get_data(ticker_symbol):
     START = "2010-01-01"
     TODAY = date.today().strftime("%Y-%m-%d")
-    ticker = "GC=F"  # XAU/USD (Gold Futures)
     try:
-        data = yf.download(ticker, start=START, end=TODAY, progress=False)
+        data = yf.download(ticker_symbol, start=START, end=TODAY, progress=False)
         if data.empty:
-            raise ValueError("No data retrieved from yfinance for ticker GC=F.")
+            raise ValueError(f"No data retrieved from yfinance for ticker {ticker_symbol}.")
         return data[['Close']]
     except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
+        st.error(f"Error fetching data for {ticker_symbol}: {str(e)}")
         return None
 
 # Preprocessing function
@@ -97,11 +105,40 @@ def predict_future_ensemble(lstm_model, gru_model, meta_model, input_data, scale
     
     return predicted_values_original.flatten()
 
+# Function to create Plotly figure
+def create_plot(historical_dates, historical_prices, future_index, future_predictions, title):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=historical_dates,
+        y=historical_prices,
+        mode='lines',
+        name='Historical Prices',
+        line=dict(color='blue')
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_index,
+        y=future_predictions,
+        mode='lines',
+        name='Future Predictions',
+        line=dict(color='red')
+    ))
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Price (USD)",
+        template="plotly_white",
+        hovermode="x unified"
+    )
+    return fig
+
 # Main app logic
 if st.button("Run Prediction"):
     with st.spinner("Fetching data and making predictions..."):
+        # Extract ticker symbol from selection
+        ticker_symbol = ticker.split()[0]  # e.g., "GC=F" from "GC=F (Gold)"
+        
         # Load data
-        data = get_xauusd_data()
+        data = get_data(ticker_symbol)
         if data is None:
             st.stop()
         st.write("Data Loaded")
@@ -116,63 +153,61 @@ if st.button("Run Prediction"):
         
         # Load models
         try:
-            lstm_model = load_model("./ensembling/lstm_model.keras")
-            gru_model = load_model("./ensembling/gru_model.keras")
-            meta_model = load_model("./ensembling/final_mlp_model.keras")
+            lstm_model = load_model("./ensembling/lstm_model.keras", compile=False)
+            gru_model = load_model("./ensembling/gru_model.keras", compile=False)
+            meta_model = load_model("./ensembling/final_mlp_model.keras", compile=False)
             st.write("Models Loaded")
         except Exception as e:
             st.error(f"Error loading models: {str(e)}")
+            st.error("This may be due to a TensorFlow or protobuf version mismatch. Try installing 'protobuf==3.20.3' or re-saving the models with your current TensorFlow version.")
             st.stop()
         
         # Make predictions based on model choice
         try:
             if model_choice == "LSTM":
                 future_predictions = predict_future_single(lstm_model, X, scaler, robust_scaler, future_steps)
-                title = "XAU/USD Future Price Predictions (LSTM Model)"
+                title = f"{ticker} Future Price Predictions (LSTM Model)"
             elif model_choice == "GRU":
                 future_predictions = predict_future_single(gru_model, X, scaler, robust_scaler, future_steps)
-                title = "XAU/USD Future Price Predictions (GRU Model)"
+                title = f"{ticker} Future Price Predictions (GRU Model)"
             else:  # Ensemble
                 future_predictions = predict_future_ensemble(lstm_model, gru_model, meta_model, X, scaler, robust_scaler, future_steps)
-                title = "XAU/USD Future Price Predictions (Meta Learner Ensemble Model)"
+                title = f"{ticker} Future Price Predictions (Meta Learner Ensemble Model)"
             
             st.write("Future Predictions:", future_predictions.tolist())
             
-            # Create Plotly figure
-            fig = go.Figure()
-            
-            # Plot historical prices
+            # Create and display plot
             historical_prices = robust_scaler.inverse_transform(scaler.inverse_transform(y)).flatten()
             historical_dates = data.index[-len(y):]
-            fig.add_trace(go.Scatter(
-                x=historical_dates,
-                y=historical_prices,
-                mode='lines',
-                name='Historical Prices',
-                line=dict(color='blue')
-            ))
-            
-            # Plot future predictions
             future_index = pd.date_range(start=data.index[-1], periods=future_steps + 1, freq='D')[1:]
-            fig.add_trace(go.Scatter(
-                x=future_index,
-                y=future_predictions,
-                mode='lines',
-                name='Future Predictions',
-                line=dict(color='red')
-            ))
+            fig = create_plot(historical_dates, historical_prices, future_index, future_predictions, title)
+            st.plotly_chart(fig, use_container_width=True, key=f"current_plot_{ticker_symbol}_{model_choice}")
             
-            # Update layout
-            fig.update_layout(
-                title=title,
-                xaxis_title="Date",
-                yaxis_title="Price (USD)",
-                template="plotly_white",
-                hovermode="x unified"
-            )
-            
-            # Display plot
-            st.plotly_chart(fig, use_container_width=True)
+            # Store result in session state
+            st.session_state.prediction_results.append({
+                'ticker': ticker,
+                'model': model_choice,
+                'predictions': future_predictions.tolist(),
+                'fig': fig,
+                'title': title
+            })
         
         except Exception as e:
             st.error(f"Error during prediction: {str(e)}")
+            st.error("Ensure the models are compatible with your TensorFlow version and that sufficient data is available.")
+
+# Display stored prediction results
+st.header("Previous Prediction Results")
+if st.session_state.prediction_results:
+    for idx, result in enumerate(st.session_state.prediction_results):
+        st.subheader(f"Prediction {idx + 1}: {result['ticker']} - {result['model']}")
+        st.write("Future Predictions:", result['predictions'])
+        # Use unique key for each stored plot
+        st.plotly_chart(result['fig'], use_container_width=True, key=f"stored_plot_{idx}_{result['ticker']}_{result['model']}")
+else:
+    st.write("No predictions yet. Run a prediction to see results here.")
+
+# Button to clear results
+if st.button("Clear Previous Results"):
+    st.session_state.prediction_results = []
+    st.rerun()
