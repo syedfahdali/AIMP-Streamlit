@@ -1,0 +1,26 @@
+# Core Libraries
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.9.0
+scikit-learn==1.4.2
+seaborn==0.13.2
+
+# Streamlit
+streamlit==1.42.0
+
+# TensorFlow & Keras (compatible with Python 3.12 and LSTM models)
+tensorflow==2.16.1
+keras==3.3.3  # Uses tf.keras under the hood
+
+# Model Loading
+h5py==3.13.0  # Required for loading .keras or .h5 models
+
+# Data Sources
+yfinance==0.2.40
+pandas-datareader==0.10.0
+
+# Plotting & Visualization
+plotly==5.22.0
+
+# System Tools & Suppressing Warnings
+asttokens==3.0.0  # Often pulled by IDEs/debuggers
